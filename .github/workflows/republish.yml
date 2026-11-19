@@ -1,0 +1,34 @@
+# Re-creates releases from this job so GitHub names "github-actions" as their author, not the account that
+# uploaded them. Files, titles and notes are kept; download counts start again. Run by publish.sh after each upload.
+name: Publish as Relaycrew
+on:
+  workflow_dispatch:
+    inputs:
+      tags:
+        description: "Release tags to re-create, separated by spaces, or: all"
+        required: true
+permissions:
+  contents: write
+jobs:
+  republish:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAGS: ${{ inputs.tags }}
+        run: |
+          set -e
+          latest=$(gh api "repos/$GH_REPO/releases/latest" -q .tag_name)
+          # oldest first, so each new release stays in the same order
+          [ "$TAGS" = all ] && TAGS=$(gh release list --limit 200 --json tagName -q '.[].tagName' | tac)
+          for t in $TAGS; do
+            [ "$(gh api "repos/$GH_REPO/releases/tags/$t" -q .author.login)" = "github-actions[bot]" ] && continue
+            rm -rf files && mkdir files && gh release download "$t" -D files
+            gh api "repos/$GH_REPO/releases/tags/$t" -q .name > title
+            gh api "repos/$GH_REPO/releases/tags/$t" -q .body > notes
+            gh release delete "$t" --yes
+            gh release create "$t" files/* --verify-tag --title "$(cat title)" --notes-file notes --latest=false
+            echo "re-created $t"
+          done
+          gh release edit "$latest" --latest
