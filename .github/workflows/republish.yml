@@ -23,7 +23,8 @@ jobs:
           # oldest first, so each new release stays in the same order
           [ "$TAGS" = all ] && TAGS=$(gh release list --limit 200 --json tagName -q '.[].tagName' | tac)
           for t in $TAGS; do
-            [ "$(gh api "repos/$GH_REPO/releases/tags/$t" -q .author.login)" = "github-actions[bot]" ] && continue
+            # skip one this job already made, unless a file was added to it since by someone else
+            [ "$(gh api "repos/$GH_REPO/releases/tags/$t" -q '[.author.login, .assets[].uploader.login] | unique | join(",")')" = "github-actions[bot]" ] && continue
             rm -rf files && mkdir files && gh release download "$t" -D files
             gh api "repos/$GH_REPO/releases/tags/$t" -q .name > title
             gh api "repos/$GH_REPO/releases/tags/$t" -q .body > notes
